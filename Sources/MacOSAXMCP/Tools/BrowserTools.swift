@@ -158,37 +158,43 @@ enum BrowserTools {
     static let readPage = ToolDefinition(
         name: "browser_read_page",
         description: "Read a tab's live DOM. mode=text: visible text; mode=html: full serialized HTML (document or a CSS selector); "
-            + "mode=elements: interactive elements with CSS selectors, values and file-input state (shadow DOM included).",
+            + "mode=elements: interactive elements with CSS selectors, values and file-input state (shadow DOM included); "
+            + "mode=frames: list the page's iframes (pass one as 'frame' to read inside it, cross-origin included).",
         inputSchema: Schema.object([
             "tab": tabParam,
-            "mode": Schema.string("What to return.", enumValues: ["text", "html", "elements"], defaultValue: "text"),
+            "mode": Schema.string("What to return.", enumValues: ["text", "html", "elements", "frames"], defaultValue: "text"),
             "selector": Schema.string("Optional CSS selector to scope text/html to one element."),
             "max_chars": Schema.int("Truncate text/html output.", defaultValue: 30000, min: 1000, max: 1_000_000),
             "max_elements": Schema.int("Max elements for mode=elements.", defaultValue: 300, min: 10, max: 2000),
+            "frame": Frames.frameParam,
         ], required: ["tab"]),
         handler: { args in
             let tab = try resolve(try args.requiredString("tab"))
-            let mode = try args.enumeration("mode", allowed: ["text", "html", "elements"], default: "text")
+            let mode = try args.enumeration("mode", allowed: ["text", "html", "elements", "frames"], default: "text")
             let selector = try args.string("selector")
             let maxChars = try args.int("max_chars", default: 30000, range: 1000...1_000_000)
             let maxElements = try args.int("max_elements", default: 300, range: 10...2000)
-            let sid = try CDPClient.shared.session(for: tab.id)
+            if mode == "frames" {
+                let frames = try Frames.list(pageSession: try CDPClient.shared.session(for: tab.id))
+                return ["ok": true, "tab": tabJSON(tab), "mode": "frames", "count": .int(frames.count), "frames": Frames.json(frames)]
+            }
+            let ctx = try Frames.context(tab: tab, frame: try args.string("frame"))
 
-            var out: [String: JSONValue] = ["ok": true, "tab": tabJSON(tab), "mode": .string(mode)]
-            let meta = try CDPClient.shared.evaluate(session: sid, expression: "({title: document.title, url: location.href, readyState: document.readyState})")
+            var out: [String: JSONValue] = ["ok": true, "tab": tabJSON(tab), "mode": .string(mode), "frame": ctx.json]
+            let meta = try ctx.eval("({title: document.title, url: location.href, readyState: document.readyState})")
             out["title"] = meta["title"] ?? .null
             out["url"] = meta["url"] ?? .null
             out["ready_state"] = meta["readyState"] ?? .null
 
             switch mode {
             case "elements":
-                let v = try CDPClient.shared.evaluate(session: sid, expression: elementsJS.replacingOccurrences(of: "__MAX__", with: String(maxElements)))
+                let v = try ctx.eval(elementsJS.replacingOccurrences(of: "__MAX__", with: String(maxElements)))
                 out["elements"] = v
                 out["element_count"] = .int(v.arrayValue?.count ?? 0)
             default:
                 let target = selector.map { "document.querySelector(\(JSONValue.string($0).compactString()))" } ?? (mode == "html" ? "document.documentElement" : "document.body")
                 let prop = mode == "html" ? "outerHTML" : "innerText"
-                let v = try CDPClient.shared.evaluate(session: sid, expression: "(() => { const el = \(target); return el ? el.\(prop) : null })()")
+                let v = try ctx.eval("(() => { const el = \(target); return el ? el.\(prop) : null })()")
                 guard let s = v.stringValue else {
                     throw ToolError(code: ErrorCode.elementNotFound, detail: "Selector matched nothing: \(selector ?? "(document)")")
                 }
@@ -245,14 +251,15 @@ enum BrowserTools {
             "tab": tabParam,
             "expression": Schema.string("JavaScript expression, e.g. 'document.title' or '[...document.links].length'."),
             "timeout_ms": Schema.int("Evaluation timeout.", defaultValue: 15000, min: 100, max: 120000),
+            "frame": Frames.frameParam,
         ], required: ["tab", "expression"]),
         handler: { args in
             let tab = try resolve(try args.requiredString("tab"))
             let expression = try args.requiredString("expression")
             let timeout = try args.int("timeout_ms", default: 15000, range: 100...120000)
-            let sid = try CDPClient.shared.session(for: tab.id)
-            let value = try CDPClient.shared.evaluate(session: sid, expression: expression, timeout: Double(timeout) / 1000)
-            return ["ok": true, "tab": tabJSON(tab), "value": value]
+            let ctx = try Frames.context(tab: tab, frame: try args.string("frame"))
+            let value = try ctx.eval(expression, timeout: Double(timeout) / 1000)
+            return ["ok": true, "tab": tabJSON(tab), "frame": ctx.json, "value": value]
         }
     )
 
@@ -279,14 +286,20 @@ enum BrowserTools {
             "tab": tabParam,
             "file_path": Schema.string("Absolute local path ('~' expanded)."),
             "selector": Schema.string("CSS selector of the file input (default: first input[type=file], shadow DOM included)."),
+            "frame": Frames.frameParam,
+            "confirm_user_tab": BrowserActions.confirmParam,
         ], required: ["tab", "file_path"]),
         handler: { args in
             let tab = try resolve(try args.requiredString("tab"))
+            try BrowserActions.guardOwned(tab, args)
             let file = try FileValidation.validate(try args.requiredString("file_path"))
             let selector = try args.string("selector")
-            let sid = try CDPClient.shared.session(for: tab.id)
+            let ctx = try Frames.context(tab: tab, frame: try args.string("frame"))
+            let sid = ctx.session
             let js = findInputJS.replacingOccurrences(of: "__SEL__", with: selector.map { JSONValue.string($0).compactString() } ?? "null")
-            let r = try CDPClient.shared.send("Runtime.evaluate", ["expression": .string(js), "returnByValue": false], session: sid)
+            var evalParams: [String: JSONValue] = ["expression": .string(js), "returnByValue": false]
+            if let cid = ctx.contextId { evalParams["contextId"] = .int(cid) }
+            let r = try CDPClient.shared.send("Runtime.evaluate", .object(evalParams), session: sid)
             guard let objectID = r["result"]?["objectId"]?.stringValue else {
                 throw ToolError(code: ErrorCode.elementNotFound, detail: "No <input type=file> found\(selector.map { " for '\($0)'" } ?? "")")
             }
@@ -302,7 +315,7 @@ enum BrowserTools {
                 throw ToolError(code: ErrorCode.actionFailed, detail: "Input did not report the file after setFileInputFiles",
                                 extra: ["input_files": files])
             }
-            return ["ok": true, "tab": tabJSON(tab), "selected_path": .string(file.path),
+            return ["ok": true, "tab": tabJSON(tab), "frame": ctx.json, "selected_path": .string(file.path),
                     "file_size_bytes": .int(file.sizeBytes), "input_files": files]
         }
     )

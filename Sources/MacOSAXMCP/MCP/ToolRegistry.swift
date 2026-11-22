@@ -35,6 +35,8 @@ enum ErrorCode {
     static let userTabProtected = "ERR_USER_TAB_PROTECTED"
     static let navigationFailed = "ERR_NAVIGATION_FAILED"
     static let tabHidden = "ERR_TAB_HIDDEN"
+    static let frameNotFound = "ERR_FRAME_NOT_FOUND"
+    static let waitTimeout = "ERR_WAIT_TIMEOUT"
 }
 
 struct ToolError: Error {

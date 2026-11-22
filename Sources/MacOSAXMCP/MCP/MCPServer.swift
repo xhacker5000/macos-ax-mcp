@@ -2,7 +2,7 @@ import Foundation
 
 enum ServerInfo {
     static let name = "macos-ax-mcp"
-    static let version = "0.1.0"
+    static let version = "0.2.0"
     static let supportedProtocolVersions = ["2025-06-18", "2025-03-26", "2024-11-05"]
     static let fallbackProtocolVersion = "2025-03-26"
     static let instructions = """

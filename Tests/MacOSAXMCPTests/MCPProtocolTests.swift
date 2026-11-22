@@ -17,7 +17,7 @@ final class MCPProtocolTests: XCTestCase {
             XCTAssertEqual(r["result"]?["protocolVersion"]?.stringValue, v)
             XCTAssertEqual(r["result"]?["capabilities"]?["tools"], .object([:]))
             XCTAssertEqual(r["result"]?["serverInfo"]?["name"]?.stringValue, "macos-ax-mcp")
-            XCTAssertEqual(r["result"]?["serverInfo"]?["version"]?.stringValue, "0.1.0")
+            XCTAssertEqual(r["result"]?["serverInfo"]?["version"]?.stringValue, "0.2.0")
         }
         let r = try call(#"{"jsonrpc":"2.0","id":"s","method":"initialize","params":{"protocolVersion":"1999-01-01"}}"#)
         XCTAssertEqual(r["id"], .string("s"))
@@ -42,7 +42,8 @@ final class MCPProtocolTests: XCTestCase {
                        ["os_check_health", "os_list_windows", "os_handle_file_dialog", "os_ax_snapshot", "os_ax_interact",
                         "browser_list_tabs", "browser_read_page", "browser_console", "browser_eval", "browser_upload_file",
                         "browser_open_tab", "browser_close_tab", "browser_navigate", "browser_click", "browser_type",
-                        "browser_key", "browser_screenshot", "browser_network"])
+                        "browser_key", "browser_screenshot", "browser_network",
+                        "browser_scroll", "browser_wait_for", "browser_hover", "browser_drag"])
         for t in tools {
             XCTAssertEqual(t["inputSchema"]?["type"]?.stringValue, "object")
             XCTAssertEqual(t["inputSchema"]?["additionalProperties"], .bool(false))

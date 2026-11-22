@@ -46,16 +46,18 @@
 
   /* card 2: tools */
   .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 28px; margin-top: 40px; flex: 1; min-height: 0; }
-  .col { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 26px 28px; }
+  .col { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px 28px; }
+  #c2 h1 { font-size: 46px; margin-top: 12px; }
+  #c2 .cols { margin-top: 26px; }
   .col h2 { font-size: 22px; font-weight: 650; display: flex; gap: 12px; align-items: baseline; }
   .col h2 small { font-family: var(--mono); font-size: 16px; color: var(--muted); font-weight: 400; }
   .col h2 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 26px; margin-top: 18px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 26px; margin-top: 14px; }
   .col.native .grid { grid-template-columns: 1fr; }
-  .t { padding: 9px 0; border-top: 1px solid var(--line); }
+  .t { padding: 6px 0; border-top: 1px solid var(--line); }
   .t code { font-size: 17px; color: var(--blue); }
   .col.native .t code { color: var(--green); }
-  .t div { font-size: 16px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+  .t div { font-size: 15px; color: var(--muted); margin-top: 3px; line-height: 1.3; }
 
   /* card 3: scenarios */
   .scen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 40px; }
@@ -71,7 +73,7 @@
 <body>
 
 <section class="card" id="c1">
-  <div class="brand"><b>macos-ax-mcp</b> &nbsp;·&nbsp; v0.1.0</div>
+  <div class="brand"><b>macos-ax-mcp</b> &nbsp;·&nbsp; v0.2.0</div>
   <h1 data-i18n="c1_title"></h1>
   <div class="sub" data-i18n="c1_sub"></div>
   <div class="arch">
@@ -86,9 +88,9 @@
   </div>
   <div class="chips">
     <div class="chip"><div class="v">0</div><div class="k" data-i18n="k_deps"></div></div>
-    <div class="chip"><div class="v">18</div><div class="k" data-i18n="k_tools"></div></div>
+    <div class="chip"><div class="v">22</div><div class="k" data-i18n="k_tools"></div></div>
     <div class="chip"><div class="v">0.04s</div><div class="k" data-i18n="k_upload"></div></div>
-    <div class="chip"><div class="v">3.7k</div><div class="k" data-i18n="k_loc"></div></div>
+    <div class="chip"><div class="v">4.2k</div><div class="k" data-i18n="k_loc"></div></div>
   </div>
   <div class="foot"><span class="trust" data-i18n="trust"></span><span>github.com/xhacker5000/macos-ax-mcp</span></div>
 </section>
@@ -98,7 +100,7 @@
   <h1 data-i18n="c2_title"></h1>
   <div class="cols">
     <div class="col">
-      <h2><span class="dot" style="background:var(--blue)"></span><span data-i18n="col_browser"></span><small>CDP · 13</small></h2>
+      <h2><span class="dot" style="background:var(--blue)"></span><span data-i18n="col_browser"></span><small>CDP · 17</small></h2>
       <div class="grid" id="browserTools"></div>
     </div>
     <div class="col native">
@@ -144,6 +146,10 @@ const T = {
       ['browser_type', 'insertText: any language, IME-safe'],
       ['browser_key', 'Enter, arrows, cmd+a / c / v / z'],
       ['browser_upload_file', 'local path to input[type=file], no dialog'],
+      ['browser_scroll', 'containers, into view, infinite scroll'],
+      ['browser_wait_for', 'element, text, URL or JS condition'],
+      ['browser_hover / drag', 'hover menus, drag-and-drop, sliders'],
+      ['frame: "…"', 'every tool works inside iframes, cross-origin too'],
     ],
     tools_n: [
       ['os_check_health', 'permissions, which host needs the grant'],
@@ -187,6 +193,10 @@ const T = {
       ['browser_type', 'insertText 输入，中文不乱'],
       ['browser_key', '回车、方向键、cmd+a / c / v / z'],
       ['browser_upload_file', '本地路径直接挂到文件框，不弹窗'],
+      ['browser_scroll', '容器内滚动、滚到可见、无限滚动'],
+      ['browser_wait_for', '等元素、文字、网址或 JS 条件'],
+      ['browser_hover / drag', '悬停菜单、拖放、滑块'],
+      ['frame: "…"', '所有工具都能进 iframe，跨域也行'],
     ],
     tools_n: [
       ['os_check_health', '权限状态，该给哪个进程授权'],

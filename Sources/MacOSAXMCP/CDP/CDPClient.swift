@@ -74,6 +74,7 @@ final class CDPClient: @unchecked Sendable {
     private var networkSeq = 0
     /// Tabs created by this server process (safe to navigate/close without user confirmation).
     private var ownedTargets: Set<String> = []
+    private var dragData: [String: JSONValue] = [:]
     static let networkCap = 2000
 
     static let consoleCap = 1000
@@ -245,6 +246,11 @@ final class CDPClient: @unchecked Sendable {
             networkBySession[sid]?[rid]?.failure = (params["canceled"]?.boolValue == true ? "canceled: " : "") + (params["errorText"]?.stringValue ?? "failed")
             networkBySession[sid]?[rid]?.endTime = CDPClient.number(params["timestamp"])
             lock.unlock()
+        case "Input.dragIntercepted":
+            guard let sid = sessionID, let data = params["data"] else { return }
+            lock.lock()
+            dragData[sid] = data
+            lock.unlock()
         case "Target.detachedFromTarget":
             lock.lock()
             if let sid = params["sessionId"]?.stringValue {
@@ -383,6 +389,13 @@ final class CDPClient: @unchecked Sendable {
         return (networkBySession[session] ?? [:]).values.filter { $0.seq > afterSeq }.sorted { $0.seq < $1.seq }
     }
 
+    /// Drag payload captured from Input.dragIntercepted (HTML5 drag and drop), consumed once.
+    func takeDragData(session: String) -> JSONValue? {
+        lock.lock()
+        defer { lock.unlock() }
+        return dragData.removeValue(forKey: session)
+    }
+
     func markOwned(_ targetID: String) {
         lock.lock()
         ownedTargets.insert(targetID)
@@ -403,11 +416,14 @@ final class CDPClient: @unchecked Sendable {
     }
 
     /// Evaluates JS in the page and returns the by-value result.
-    func evaluate(session: String, expression: String, awaitPromise: Bool = true, timeout: TimeInterval = 20) throws -> JSONValue {
-        let r = try send("Runtime.evaluate", [
-            "expression": .string(expression), "returnByValue": true, "awaitPromise": .bool(awaitPromise),
-            "userGesture": true, "replMode": true,
-        ], session: session, timeout: timeout)
+    func evaluate(session: String, expression: String, awaitPromise: Bool = true, timeout: TimeInterval = 20,
+                  contextId: Int? = nil) throws -> JSONValue {
+        var params: [String: JSONValue] = [
+            "expression": .string(expression), "returnByValue": true, "awaitPromise": .bool(awaitPromise), "userGesture": true,
+        ]
+        // replMode (top-level await/let redeclaration) only applies to the default context.
+        if let contextId { params["contextId"] = .int(contextId) } else { params["replMode"] = true }
+        let r = try send("Runtime.evaluate", .object(params), session: session, timeout: timeout)
         if let ex = r["exceptionDetails"] {
             let desc = ex["exception"]?["description"]?.stringValue ?? ex["text"]?.stringValue ?? "exception"
             throw ToolError(code: ErrorCode.jsException, detail: desc)

@@ -15,10 +15,10 @@ agent ──MCP stdio──▶ macos-ax-mcp ──CDP─────────
 
 **Accessibility is a means, not the goal.** The goal is simple: when I ask the agent "look at this page", it should see what DevTools sees in the browser I already have open, with my logins, my tabs, my state. Everything in this tool serves that sentence.
 
-1. **Open source because of trust.** A tool that can read every logged-in tab you have should not be a black box. The whole thing is ~3.7k lines of Swift with zero third-party packages, so you can read all of it in an evening and build it yourself instead of trusting a binary.
+1. **Open source because of trust.** A tool that can read every logged-in tab you have should not be a black box. The whole thing is ~4.2k lines of Swift with zero third-party packages, so you can read all of it in an evening and build it yourself instead of trusting a binary.
 2. **Talk to the platform directly, skip the middlemen.** Browser extensions sit in a sandbox, cap payload sizes, need their own login, and disconnect. Chrome already ships a first-class automation protocol (CDP) and macOS already ships one for native UI (AXUIElement). This tool speaks both natively.
 3. **Deterministic, not visual.** No screenshots-then-guess loops, no OCR. Every action is a state machine over real protocol state, with an error code and a step trace when it fails. Screenshots exist for *you*, not for decision-making.
-4. **Your tabs are yours.** Reading is free. Anything that changes a page you opened (click, type, navigate, upload, close) is refused with `ERR_USER_TAB_PROTECTED` unless the agent passes `confirm_user_tab: true`, which it may only do after you said yes. The agent works in its own tabs (`browser_open_tab`). This is enforced in the binary, not left to a prompt.
+4. **Your tabs are yours.** Reading is free. Anything that changes a page you opened (click, type, navigate, scroll, hover, drag, upload, close) is refused with `ERR_USER_TAB_PROTECTED` unless the agent passes `confirm_user_tab: true`, which it may only do after you said yes. The agent works in its own tabs (`browser_open_tab`). This is enforced in the binary, not left to a prompt.
 5. **Small and reproducible.** Swift + Apple frameworks only, offline-deterministic build. Universal (arm64 + x86_64), runs on macOS 14+ without Xcode installed.
 6. **Fail loudly.** stdout carries only JSON-RPC frames (fd 1 is redirected to stderr at startup so a stray print can never corrupt the stream); every tool error is structured `{error_code, error_detail, ...}`; the MCP process never crashes on a tool failure.
 7. **Real input is a scarce resource.** Synthetic OS keystrokes need the foreground and an unlocked screen, so they are the last resort, never the default. Browser input goes through CDP (trusted, background-capable); IME-sensitive text goes through `Input.insertText` or the pasteboard, never simulated character keys.
@@ -32,19 +32,23 @@ agent ──MCP stdio──▶ macos-ax-mcp ──CDP─────────
 | Tool | What you get |
 |---|---|
 | `browser_list_tabs` | All tabs across all windows and profiles; flags the one shown in the front window |
-| `browser_read_page` | `text`, full `html`, or `elements` (interactive elements with CSS selectors, values, file-input state, off-screen detection, shadow DOM) |
+| `browser_read_page` | `text`, full `html`, `elements` (interactive elements with CSS selectors, values, file-input state, off-screen detection, shadow DOM), or `frames` (the page's iframes) |
 | `browser_console` | console calls, uncaught exceptions, browser log entries; **includes messages logged before the agent connected** (Chrome's buffer is replayed); extension noise filtered by default |
 | `browser_network` | requests with status, type, size, duration, failure reason; fetch any response body |
 | `browser_screenshot` | viewport, full page or one element, saved as PNG/JPEG |
 | `browser_eval` | evaluate JS, promises awaited |
+| `browser_wait_for` | wait for an element to appear / disappear, text, a URL, or a JS condition (instead of fixed sleeps) |
 | `browser_open_tab` / `browser_close_tab` | the agent's own tabs (own window by default, does not steal keyboard focus) |
 | `browser_navigate` | URL, back, forward, reload; waits for load |
 | `browser_click` | trusted mouse events (`isTrusted=true`), scrolls into view, refuses covered elements |
 | `browser_type` | `Input.insertText`: any language, IME-safe, optional clear and Enter |
 | `browser_key` | Enter, Tab, arrows, `cmd+a` / `c` / `v` / `x` / `z` mapped to real editing commands |
+| `browser_scroll` | up / down / top / bottom / into view, inside any scrollable element; infinite scroll with automatic stop when no more content loads |
+| `browser_hover` | real mouse move, opens hover menus and tooltips |
+| `browser_drag` | HTML5 drag-and-drop (kanban, drop zones) and pointer dragging (sliders, sortable lists, canvas) |
 | `browser_upload_file` | attach a local file to `<input type=file>` **without opening the file dialog**; 50 MB in 0.04 s, multi-GB fine |
 
-Tabs are addressed by id, by a title/URL substring, or `active` (the tab in Chrome's front window, resolved via Accessibility).
+Tabs are addressed by id, by a title/URL substring, or `active` (the tab in Chrome's front window, resolved via Accessibility). Reading, eval, click, type, hover, drag, scroll, wait and upload all take an optional `frame` to work inside an iframe, **cross-origin iframes included**; coordinates are mapped to the page automatically.
 
 ### Native macOS (Accessibility + CGEvent)
 

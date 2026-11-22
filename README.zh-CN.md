@@ -12,10 +12,10 @@ agent 通过 MCP stdio 调用 macos-ax-mcp。浏览器里的事走 Chrome DevToo
 
 Accessibility 只是手段，目标很简单：我跟 agent 说帮我看看这个页面，它看到的应该和 DevTools 看到的一样，而且就是我已经开着的那个浏览器，带着我的登录态、我的标签页。这个工具里的每个设计都服务这一句话。
 
-1. **开源是为了信任。** 一个能读你所有已登录标签页的工具，不该是黑盒。整个项目 3700 多行 Swift，没有任何第三方包，一个晚上能读完，读完自己编译，不用信我发的二进制。
+1. **开源是为了信任。** 一个能读你所有已登录标签页的工具，不该是黑盒。整个项目 4100 多行 Swift，没有任何第三方包，一个晚上能读完，读完自己编译，不用信我发的二进制。
 2. 直接跟平台对话，不要中间商。扩展跑在沙盒里，传文件有大小上限，要单独登录，还会掉线。Chrome 自己就带一套一等公民的自动化协议（CDP），macOS 也有一套原生界面接口（AXUIElement），这个工具两套都原生说。
 3. 确定性，不靠看图猜。没有截图再识别的循环，没有 OCR。每个动作都是基于协议状态的状态机，失败时给错误码和每一步的 trace。截图功能是给人看的，不拿来做决策。
-4. 你的标签页归你。读随便读。凡是会改动你自己开的页面的操作（点击、输入、跳转、上传、关闭），工具直接拒绝并返回 `ERR_USER_TAB_PROTECTED`，除非 agent 传 `confirm_user_tab: true`，而这个参数只有你点头之后它才能传。agent 干活用它自己开的标签页（`browser_open_tab`）。这条规则写死在二进制里，不靠提示词自觉。
+4. 你的标签页归你。读随便读。凡是会改动你自己开的页面的操作（点击、输入、跳转、滚动、悬停、拖拽、上传、关闭），工具直接拒绝并返回 `ERR_USER_TAB_PROTECTED`，除非 agent 传 `confirm_user_tab: true`，而这个参数只有你点头之后它才能传。agent 干活用它自己开的标签页（`browser_open_tab`）。这条规则写死在二进制里，不靠提示词自觉。
 5. 小，可复现。只用 Swift 和 Apple 自带框架，离线也能确定性编译。通用二进制（arm64 和 x86_64），macOS 14 以上不装 Xcode 也能跑。
 6. 出错要大声。stdout 只走 JSON-RPC 帧，启动时把 fd 1 重定向到 stderr，任何误打的 print 都污染不了协议流。工具出错一律返回结构化的 `error_code` 和 `error_detail`，进程不会因为某个工具失败而挂掉。
 7. 真实键鼠输入是稀缺资源。系统级模拟按键要占前台，还不能锁屏，所以只当最后手段。浏览器里的输入走 CDP，可信，后台也能做；涉及输入法的文本走 `Input.insertText` 或剪贴板，从不模拟逐个字符按键。
@@ -29,19 +29,23 @@ Accessibility 只是手段，目标很简单：我跟 agent 说帮我看看这�
 | 工具 | 作用 |
 |---|---|
 | `browser_list_tabs` | 所有窗口、所有用户配置的标签页，标出你前台正在看的那个 |
-| `browser_read_page` | 纯文本、完整 HTML，或可交互元素清单（带 CSS 选择器、输入框的值、文件框状态、是否在屏幕外，支持 shadow DOM） |
+| `browser_read_page` | 纯文本、完整 HTML、可交互元素清单（带 CSS 选择器、输入框的值、文件框状态、是否在屏幕外，支持 shadow DOM），或 `frames` 列出页面里的 iframe |
 | `browser_console` | console 输出、未捕获异常、浏览器日志。连接之前打的日志也能拿回来，Chrome 会把缓存重放一遍；扩展的噪音默认过滤 |
 | `browser_network` | 请求的状态码、类型、大小、耗时、失败原因，能取任意响应体 |
 | `browser_screenshot` | 可视区、整页或单个元素，存成 PNG 或 JPEG |
 | `browser_eval` | 执行 JS，自动等 Promise |
+| `browser_wait_for` | 等元素出现或消失、等文字、等网址变化、等 JS 条件成立，不用写死等待时间 |
 | `browser_open_tab` / `browser_close_tab` | agent 自己的标签页，默认独立窗口，不抢键盘焦点 |
 | `browser_navigate` | 打开网址、后退、前进、刷新，等加载完成 |
 | `browser_click` | 可信鼠标事件（`isTrusted=true`），先滚到可见，被遮挡就拒绝 |
 | `browser_type` | 用 `Input.insertText` 输入，任何语言，输入法安全，可先清空、可输完回车 |
 | `browser_key` | 回车、Tab、方向键，`cmd+a` `cmd+c` `cmd+v` `cmd+x` `cmd+z` 映射成真正的编辑命令 |
+| `browser_scroll` | 上下滚、到顶到底、把元素滚到可见，任何可滚动区域都行；无限滚动加载不出新内容时自动停 |
+| `browser_hover` | 真实鼠标移动，能打开悬停菜单和提示框 |
+| `browser_drag` | 网页原生拖放（看板、拖拽上传区）和按住拖动（滑块、排序列表、画布）都支持 |
 | `browser_upload_file` | 把本地文件挂到 `<input type=file>`，不弹文件选择框。50 MB 用时 0.04 秒，几 GB 也没问题 |
 
-指定标签页可以用 id、标题或网址的片段，或者 `active`，表示 Chrome 前台窗口里正在显示的那页（通过 Accessibility 识别）。
+指定标签页可以用 id、标题或网址的片段，或者 `active`，表示 Chrome 前台窗口里正在显示的那页（通过 Accessibility 识别）。读取、执行 JS、点击、输入、悬停、拖拽、滚动、等待、上传都可以加 `frame` 参数，直接在 iframe 里操作，**跨域 iframe 也行**，坐标会自动换算到整页。
 
 ### macOS 原生（Accessibility 和 CGEvent）
 

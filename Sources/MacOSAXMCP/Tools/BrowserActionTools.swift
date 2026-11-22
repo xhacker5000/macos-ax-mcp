@@ -6,7 +6,7 @@ import Foundation
 /// (browser_open_tab). Acting on a tab the user opened requires confirm_user_tab=true, which the agent
 /// may only pass after the user explicitly agreed.
 enum BrowserActions {
-    static var definitions: [ToolDefinition] { [openTab, closeTab, navigate, click, type, key, screenshot, network] }
+    static var definitions: [ToolDefinition] { [openTab, closeTab, navigate, click, type, key, screenshot, network] + BrowserExplore.definitions }
 
     static let confirmParam = Schema.bool("Required to act on a tab the USER opened (not one from browser_open_tab). "
         + "Only pass true after the user explicitly agreed to changes in that tab.", defaultValue: false)
@@ -129,7 +129,7 @@ enum BrowserActions {
 
     static let locateJS = #"""
     (() => {
-      const sel = __SEL__;
+      const sel = __SEL__, doScroll = __SCROLL__;
       const find = (root) => {
         const hit = root.querySelector(sel);
         if (hit) return hit;
@@ -138,28 +138,64 @@ enum BrowserActions {
       };
       const el = find(document);
       if (!el) return { found: false };
-      el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+      if (doScroll) el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
       const r = el.getBoundingClientRect();
       const x = r.left + r.width / 2, y = r.top + r.height / 2;
-      const top = document.elementFromPoint(x, y);
+      const inViewport = x >= 0 && y >= 0 && x <= innerWidth && y <= innerHeight;
+      const top = inViewport ? document.elementFromPoint(x, y) : null;
       const covered = !!top && top !== el && !el.contains(top) && !(top.shadowRoot && top.shadowRoot.contains(el)) && !top.contains(el)
                       && !(el.tagName === 'INPUT' && el.labels && [...el.labels].some(l => l.contains(top)));
       const desc = (e) => e ? e.tagName.toLowerCase() + (e.id ? '#' + e.id : '') + (e.className && typeof e.className === 'string' ? '.' + e.className.trim().split(/\s+/).slice(0, 2).join('.') : '') : null;
-      return { found: true, x, y, w: r.width, h: r.height, covered, covered_by: covered ? desc(top) : null, tag: desc(el),
-               text: (el.innerText || el.value || '').trim().slice(0, 60) };
+      return { found: true, x, y, w: r.width, h: r.height, in_viewport: inViewport, covered, covered_by: covered ? desc(top) : null,
+               tag: desc(el), text: (el.innerText || el.value || '').trim().slice(0, 60) };
     })()
     """#
 
-    static func mouse(_ sid: String, _ type: String, x: Double, y: Double, clickCount: Int = 1) throws {
+    static func mouse(_ sid: String, _ type: String, x: Double, y: Double, clickCount: Int = 1, buttons: Int? = nil) throws {
         var p: [String: JSONValue] = ["type": .string(type), "x": .double(x), "y": .double(y)]
-        if type != "mouseMoved" { p["button"] = "left"; p["clickCount"] = .int(clickCount); p["buttons"] = .int(type == "mousePressed" ? 1 : 0) }
+        if type != "mouseMoved" {
+            p["button"] = "left"
+            p["clickCount"] = .int(clickCount)
+            p["buttons"] = .int(type == "mousePressed" ? 1 : 0)
+        } else if let buttons {
+            p["buttons"] = .int(buttons)
+            if buttons != 0 { p["button"] = "left" }
+        }
         _ = try CDPClient.shared.send("Input.dispatchMouseEvent", .object(p), session: sid, timeout: 4)
+    }
+
+    /// Resolves a selector (in the given frame) or raw x/y to a point in PAGE viewport coordinates.
+    static func point(_ ctx: FrameContext, _ args: Args, scroll: Bool, force: Bool = true,
+                      selectorKey: String = "selector", xKey: String = "x", yKey: String = "y") throws -> (CGPoint, JSONValue?) {
+        if let selector = try args.string(selectorKey) {
+            let js = locateJS.replacingOccurrences(of: "__SEL__", with: JSONValue.string(selector).compactString())
+                .replacingOccurrences(of: "__SCROLL__", with: scroll ? "true" : "false")
+            let loc = try ctx.eval(js)
+            guard loc["found"]?.boolValue == true, let lx = CDPClient.number(loc["x"]), let ly = CDPClient.number(loc["y"]) else {
+                throw ToolError(code: ErrorCode.elementNotFound, detail: "No element matches '\(selector)'")
+            }
+            if (CDPClient.number(loc["w"]) ?? 0) < 1 || (CDPClient.number(loc["h"]) ?? 0) < 1 {
+                throw ToolError(code: ErrorCode.elementNotVisible, detail: "'\(selector)' has no visible box (display:none / zero size). For file inputs use browser_upload_file.")
+            }
+            if loc["in_viewport"]?.boolValue == false {
+                throw ToolError(code: ErrorCode.elementNotVisible, detail: "'\(selector)' is outside the viewport; scroll it into view first (browser_scroll direction=into_view).")
+            }
+            if loc["covered"]?.boolValue == true && !force {
+                throw ToolError(code: ErrorCode.elementNotVisible, detail: "'\(selector)' is covered by \(loc["covered_by"]?.stringValue ?? "another element"); pass force=true to click anyway.")
+            }
+            return (try ctx.toPage(CGPoint(x: lx, y: ly)), loc)
+        }
+        guard args.raw[xKey] != nil, args.raw[yKey] != nil else {
+            throw ToolError.invalid("Pass '\(selectorKey)' or both '\(xKey)' and '\(yKey)'")
+        }
+        let p = CGPoint(x: Double(try args.int(xKey, default: 0, range: 0...100_000)), y: Double(try args.int(yKey, default: 0, range: 0...100_000)))
+        return (ctx.frameId == nil ? p : try ctx.toPage(p), nil)
     }
 
     static let click = ToolDefinition(
         name: "browser_click",
-        description: "Click an element (CSS selector, shadow DOM searched) or viewport coordinates with trusted CDP mouse "
-            + "events (counts as a real user gesture, e.g. opens file choosers). Scrolls into view and reports if covered.",
+        description: "Click an element (CSS selector, shadow DOM searched, iframe via 'frame') or viewport coordinates with trusted "
+            + "CDP mouse events (counts as a real user gesture, e.g. opens file choosers). Scrolls into view and reports if covered.",
         inputSchema: Schema.object([
             "tab": BrowserTools.tabParam,
             "selector": Schema.string("CSS selector of the element to click."),
@@ -167,43 +203,25 @@ enum BrowserActions {
             "y": Schema.int("Viewport Y (CSS px) when no selector.", defaultValue: 0, min: 0, max: 100_000),
             "double": Schema.bool("Double-click.", defaultValue: false),
             "force": Schema.bool("Click even if another element covers the target.", defaultValue: false),
+            "frame": Frames.frameParam,
             "confirm_user_tab": confirmParam,
         ], required: ["tab"]),
         handler: { args in
             let tab = try BrowserTools.resolve(try args.requiredString("tab"))
             try guardOwned(tab, args)
-            let selector = try args.string("selector")
             let double = try args.bool("double", default: false)
             let force = try args.bool("force", default: false)
-            let sid = try CDPClient.shared.session(for: tab.id)
+            let ctx = try Frames.context(tab: tab, frame: try args.string("frame"))
+            let sid = ctx.pageSession
             try requireVisible(sid, tab)
-            var out: [String: JSONValue] = ["ok": true, "tab_id": .string(tab.id)]
-            let x: Double, y: Double
-            if let selector {
-                let loc = try CDPClient.shared.evaluate(session: sid, expression: locateJS.replacingOccurrences(of: "__SEL__", with: JSONValue.string(selector).compactString()))
-                guard loc["found"]?.boolValue == true, let lx = CDPClient.number(loc["x"]), let ly = CDPClient.number(loc["y"]) else {
-                    throw ToolError(code: ErrorCode.elementNotFound, detail: "No element matches '\(selector)'")
-                }
-                if (CDPClient.number(loc["w"]) ?? 0) < 1 || (CDPClient.number(loc["h"]) ?? 0) < 1 {
-                    throw ToolError(code: ErrorCode.elementNotVisible, detail: "'\(selector)' has no visible box (display:none / zero size). For file inputs use browser_upload_file.")
-                }
-                if loc["covered"]?.boolValue == true && !force {
-                    throw ToolError(code: ErrorCode.elementNotVisible, detail: "'\(selector)' is covered by \(loc["covered_by"]?.stringValue ?? "another element"); pass force=true to click anyway.")
-                }
-                x = lx; y = ly
-                out["element"] = loc
-            } else {
-                guard args.raw["x"] != nil, args.raw["y"] != nil else { throw ToolError.invalid("Pass 'selector' or both 'x' and 'y'") }
-                x = Double(try args.int("x", default: 0, range: 0...100_000))
-                y = Double(try args.int("y", default: 0, range: 0...100_000))
-            }
-            try mouse(sid, "mouseMoved", x: x, y: y)
+            let (p, element) = try point(ctx, args, scroll: true, force: force)
+            try mouse(sid, "mouseMoved", x: p.x, y: p.y)
             for n in 1...(double ? 2 : 1) {
-                try mouse(sid, "mousePressed", x: x, y: y, clickCount: n)
-                try mouse(sid, "mouseReleased", x: x, y: y, clickCount: n)
+                try mouse(sid, "mousePressed", x: p.x, y: p.y, clickCount: n)
+                try mouse(sid, "mouseReleased", x: p.x, y: p.y, clickCount: n)
             }
-            out["x"] = .int(Int(x))
-            out["y"] = .int(Int(y))
+            var out: [String: JSONValue] = ["ok": true, "tab_id": .string(tab.id), "x": .int(Int(p.x)), "y": .int(Int(p.y)), "frame": ctx.json]
+            if let element { out["element"] = element }
             Poll.sleep(ms: 100)
             out["page"] = pageInfo(sid)
             return .object(out)
@@ -298,6 +316,7 @@ enum BrowserActions {
             "selector": Schema.string("CSS selector to focus first (default: currently focused element)."),
             "clear": Schema.bool("Replace existing content.", defaultValue: false),
             "press_enter": Schema.bool("Press Enter after typing.", defaultValue: false),
+            "frame": Frames.frameParam,
             "confirm_user_tab": confirmParam,
         ], required: ["tab", "text"]),
         handler: { args in
@@ -307,20 +326,20 @@ enum BrowserActions {
             let selector = try args.string("selector")
             let clear = try args.bool("clear", default: false)
             let enter = try args.bool("press_enter", default: false)
-            let sid = try CDPClient.shared.session(for: tab.id)
+            let ctx = try Frames.context(tab: tab, frame: try args.string("frame"))
+            let sid = ctx.pageSession
             if enter || (clear && text.isEmpty) { try requireVisible(sid, tab) }
             let js = focusJS.replacingOccurrences(of: "__SEL__", with: selector.map { JSONValue.string($0).compactString() } ?? "null")
                 .replacingOccurrences(of: "__CLEAR__", with: clear ? "true" : "false")
-            let f = try CDPClient.shared.evaluate(session: sid, expression: js)
+            let f = try ctx.eval(js)
             guard f["found"]?.boolValue == true else {
                 throw ToolError(code: ErrorCode.elementNotFound, detail: selector.map { "No element matches '\($0)'" } ?? "No focused element")
             }
             if clear && text.isEmpty { try pressKey(sid, "Backspace") }
             if !text.isEmpty { _ = try CDPClient.shared.send("Input.insertText", ["text": .string(text)], session: sid) }
             if enter { try pressKey(sid, "Enter") }
-            let value = try? CDPClient.shared.evaluate(session: sid, expression:
-                "(() => { const e = document.activeElement; return e ? (e.isContentEditable ? e.innerText : (e.value ?? null)) : null })()")
-            var out: [String: JSONValue] = ["ok": true, "tab_id": .string(tab.id), "element": f]
+            let value = try? ctx.eval("(() => { const e = document.activeElement; return e ? (e.isContentEditable ? e.innerText : (e.value ?? null)) : null })()")
+            var out: [String: JSONValue] = ["ok": true, "tab_id": .string(tab.id), "element": f, "frame": ctx.json]
             if let v = value?.stringValue { out["value_after"] = .string(String(v.prefix(500))) }
             return .object(out)
         }
