@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>macos-ax-mcp cards</title>
+<style>
+  :root {
+    --bg: #0b0f17; --panel: #121826; --panel2: #161e2e; --line: #243049; --fg: #e8edf5; --muted: #8b97ab;
+    --green: #4ade80; --blue: #60a5fa; --amber: #fbbf24; --rose: #fb7185;
+    --mono: "SF Mono", ui-monospace, Menlo, monospace;
+    --sans: -apple-system, "SF Pro Display", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1600px; height: 900px; background: var(--bg); color: var(--fg); font-family: var(--sans); overflow: hidden; }
+  .card { width: 1600px; height: 900px; padding: 64px 80px; position: relative; display: none; flex-direction: column;
+          background: radial-gradient(1200px 600px at 85% -10%, rgba(96,165,250,.13), transparent 60%),
+                      radial-gradient(900px 500px at -10% 110%, rgba(74,222,128,.10), transparent 60%), var(--bg); }
+  .card.on { display: flex; }
+  .brand { font-family: var(--mono); font-size: 22px; color: var(--green); letter-spacing: .5px; }
+  .brand b { color: var(--fg); font-weight: 600; }
+  h1 { font-size: 54px; line-height: 1.12; font-weight: 700; letter-spacing: -1px; margin-top: 18px; }
+  h1 em { font-style: normal; color: var(--green); }
+  .sub { font-size: 26px; color: var(--muted); margin-top: 16px; line-height: 1.45; max-width: 1300px; }
+  .foot { margin-top: auto; padding-top: 28px; display: flex; justify-content: space-between; align-items: center;
+          font-family: var(--mono); font-size: 19px; color: var(--muted); }
+  .foot .trust { color: var(--amber); font-family: var(--sans); font-size: 22px; font-weight: 600; }
+  .nw { white-space: nowrap; }
+  code, .mono { font-family: var(--mono); }
+
+  /* card 1: architecture */
+  .arch { display: grid; grid-template-columns: 300px 120px 360px 120px 1fr; align-items: center; margin-top: 44px; }
+  .node { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 24px 26px; }
+  .node h3 { font-size: 24px; font-weight: 650; }
+  .node p { font-size: 18px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .node.core { border-color: rgba(74,222,128,.55); box-shadow: 0 0 0 4px rgba(74,222,128,.08); }
+  .node.core h3 { font-family: var(--mono); color: var(--green); }
+  .wire { height: 2px; background: linear-gradient(90deg, var(--line), var(--green)); position: relative; }
+  .wire span { position: absolute; top: -30px; left: 0; right: 0; text-align: center; font-family: var(--mono); font-size: 15px; color: var(--muted); }
+  .targets { display: flex; flex-direction: column; gap: 18px; }
+  .fan { display: flex; flex-direction: column; justify-content: space-around; height: 100%; gap: 92px; }
+  .fan .wire span { top: -28px; }
+  .chips { display: flex; gap: 18px; margin-top: 40px; }
+  .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 18px 24px; min-width: 250px; }
+  .chip .v { font-size: 38px; font-weight: 700; font-family: var(--mono); color: var(--fg); }
+  .chip .k { font-size: 17px; color: var(--muted); margin-top: 6px; }
+
+  /* card 2: tools */
+  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 28px; margin-top: 40px; flex: 1; min-height: 0; }
+  .col { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 26px 28px; }
+  .col h2 { font-size: 22px; font-weight: 650; display: flex; gap: 12px; align-items: baseline; }
+  .col h2 small { font-family: var(--mono); font-size: 16px; color: var(--muted); font-weight: 400; }
+  .col h2 .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 26px; margin-top: 18px; }
+  .col.native .grid { grid-template-columns: 1fr; }
+  .t { padding: 9px 0; border-top: 1px solid var(--line); }
+  .t code { font-size: 17px; color: var(--blue); }
+  .col.native .t code { color: var(--green); }
+  .t div { font-size: 16px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+
+  /* card 3: scenarios */
+  .scen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; margin-top: 40px; }
+  .s { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 24px 26px; min-height: 230px; display: flex; flex-direction: column; }
+  .s .tag { font-family: var(--mono); font-size: 14px; letter-spacing: .5px; text-transform: uppercase; }
+  .s h3 { font-size: 25px; font-weight: 650; margin-top: 10px; line-height: 1.3; }
+  .s p { font-size: 17px; color: var(--muted); margin-top: 10px; line-height: 1.5; flex: 1; }
+  .s .proof { font-family: var(--mono); font-size: 15px; color: var(--green); background: rgba(74,222,128,.07);
+              border: 1px solid rgba(74,222,128,.25); border-radius: 10px; padding: 8px 12px; margin-top: 14px; }
+  .s.wide { grid-column: span 1; }
+</style>
+</head>
+<body>
+
+<section class="card" id="c1">
+  <div class="brand"><b>macos-ax-mcp</b> &nbsp;·&nbsp; v0.1.0</div>
+  <h1 data-i18n="c1_title"></h1>
+  <div class="sub" data-i18n="c1_sub"></div>
+  <div class="arch">
+    <div class="node"><h3 data-i18n="n_agent"></h3><p data-i18n="n_agent_p"></p></div>
+    <div class="wire"><span>MCP stdio</span></div>
+    <div class="node core"><h3>macos-ax-mcp</h3><p data-i18n="n_core_p"></p></div>
+    <div class="fan"><div class="wire"><span>CDP</span></div><div class="wire"><span>AX</span></div></div>
+    <div class="targets">
+      <div class="node"><h3 data-i18n="n_chrome"></h3><p data-i18n="n_chrome_p"></p></div>
+      <div class="node"><h3 data-i18n="n_mac"></h3><p data-i18n="n_mac_p"></p></div>
+    </div>
+  </div>
+  <div class="chips">
+    <div class="chip"><div class="v">0</div><div class="k" data-i18n="k_deps"></div></div>
+    <div class="chip"><div class="v">18</div><div class="k" data-i18n="k_tools"></div></div>
+    <div class="chip"><div class="v">0.04s</div><div class="k" data-i18n="k_upload"></div></div>
+    <div class="chip"><div class="v">3.7k</div><div class="k" data-i18n="k_loc"></div></div>
+  </div>
+  <div class="foot"><span class="trust" data-i18n="trust"></span><span>github.com/xhacker5000/macos-ax-mcp</span></div>
+</section>
+
+<section class="card" id="c2">
+  <div class="brand"><b>macos-ax-mcp</b> &nbsp;·&nbsp; tools</div>
+  <h1 data-i18n="c2_title"></h1>
+  <div class="cols">
+    <div class="col">
+      <h2><span class="dot" style="background:var(--blue)"></span><span data-i18n="col_browser"></span><small>CDP · 13</small></h2>
+      <div class="grid" id="browserTools"></div>
+    </div>
+    <div class="col native">
+      <h2><span class="dot" style="background:var(--green)"></span><span data-i18n="col_native"></span><small>AX · CGEvent · 5</small></h2>
+      <div class="grid" id="nativeTools"></div>
+    </div>
+  </div>
+  <div class="foot"><span class="trust" data-i18n="guard"></span><span>github.com/xhacker5000/macos-ax-mcp</span></div>
+</section>
+
+<section class="card" id="c3">
+  <div class="brand"><b>macos-ax-mcp</b> &nbsp;·&nbsp; scenarios</div>
+  <h1 data-i18n="c3_title"></h1>
+  <div class="scen" id="scen"></div>
+  <div class="foot"><span class="trust" data-i18n="trust"></span><span>github.com/xhacker5000/macos-ax-mcp</span></div>
+</section>
+
+<script>
+const T = {
+  en: {
+    c1_title: 'Let your agent use <em>the Chrome you already have open.</em>',
+    c1_sub: 'Every tab, live DOM, console and network, plus the native macOS UI around it. One Swift binary. No browser extension.',
+    n_agent: 'Your agent', n_agent_p: 'Claude Code, Antigravity, any MCP client',
+    n_core_p: 'single universal binary, zero dependencies, runs locally',
+    n_chrome: 'Your running Chrome', n_chrome_p: 'tabs · DOM · console · network · trusted input · <span class="nw">dialog-free upload</span>',
+    n_mac: 'Native macOS', n_mac_p: 'file dialogs · sheets · other apps',
+    k_deps: 'third-party packages', k_tools: 'MCP tools', k_upload: '50 MB upload, no dialog', k_loc: 'lines of Swift, auditable',
+    trust: 'Open source because of trust: read every line before it reads your tabs.',
+    c2_title: 'Everything DevTools sees, as tools.',
+    col_browser: 'Browser', col_native: 'Native macOS',
+    guard: 'Your tabs are yours: changes to a tab you opened are refused unless you agree.',
+    c3_title: 'Where it fits.',
+    tools_b: [
+      ['browser_list_tabs', 'all tabs, all windows and profiles'],
+      ['browser_read_page', 'text, HTML, or elements with selectors'],
+      ['browser_console', 'logs and exceptions, incl. before connect'],
+      ['browser_network', 'status, size, failures, response bodies'],
+      ['browser_screenshot', 'viewport, full page, or element'],
+      ['browser_eval', 'run JS, promises awaited'],
+      ['browser_open_tab / close_tab', 'agent works in its own window'],
+      ['browser_navigate', 'URL, back, forward, reload'],
+      ['browser_click', 'trusted events, refuses covered targets'],
+      ['browser_type', 'insertText: any language, IME-safe'],
+      ['browser_key', 'Enter, arrows, cmd+a / c / v / z'],
+      ['browser_upload_file', 'local path to input[type=file], no dialog'],
+    ],
+    tools_n: [
+      ['os_check_health', 'permissions, which host needs the grant'],
+      ['os_list_windows', 'apps, windows, open dialogs'],
+      ['os_ax_snapshot', 'pruned Accessibility tree'],
+      ['os_ax_interact', 'press, set value, focus, click'],
+      ['os_handle_file_dialog', 'drive an open NSOpenPanel'],
+    ],
+    scen: [
+      ['debug', 'var(--rose)', '"Why is this page broken?"', 'DOM, console errors from page load, and failed requests of the tab you are looking at, in one call each.', 'console replay: logs from before connect'],
+      ['upload', 'var(--green)', 'Upload big videos', 'Hand Chrome a file path. The bytes never pass through the agent or an extension.', '50 MB · 0.04 s · no file dialog'],
+      ['side by side', 'var(--blue)', 'Agent works next to you', 'It opens its own window, clicks and types there, and cannot touch your tabs without asking.', 'ERR_USER_TAB_PROTECTED'],
+      ['input', 'var(--amber)', 'Forms in any language', 'Chinese, Japanese, emoji: typed through insertText, never simulated key by key.', 'isTrusted=true · 120 ms/click'],
+      ['node', 'var(--blue)', 'An always-on agent Mac', 'Copy one universal binary to an old Intel Mac and drive it over SSH.', 'arm64 + x86_64 · macOS 14+'],
+      ['native', 'var(--green)', 'Beyond the browser', 'System file dialogs, permission sheets and other apps via Accessibility.', 'AXUIElement · CGEvent'],
+    ],
+  },
+  zh: {
+    c1_title: '让 agent 直接用<em>你已经开着的那个 Chrome</em>',
+    c1_sub: '所有标签页、实时 DOM、console、network，外加浏览器外面那层 macOS 原生界面。<span class="nw">一个 Swift 二进制，不装扩展。</span>',
+    n_agent: '你的 agent', n_agent_p: 'Claude Code、Antigravity，任何 MCP 客户端',
+    n_core_p: '单个通用二进制，零依赖，本地运行',
+    n_chrome: '你正在用的 Chrome', n_chrome_p: '标签页 · DOM · console · network · 可信输入 · <span class="nw">免弹窗上传</span>',
+    n_mac: 'macOS 原生界面', n_mac_p: '文件对话框 · 弹窗 · 其他 App',
+    k_deps: '个第三方依赖', k_tools: '个 MCP 工具', k_upload: '传 50 MB，不弹框', k_loc: '行 Swift，可以逐行审',
+    trust: '开源是为了信任：它读你的标签页之前，你先读它的每一行。',
+    c2_title: 'DevTools 能看到的，都做成了工具',
+    col_browser: '浏览器', col_native: 'macOS 原生',
+    guard: '你的标签页归你：改动你自己开的页面，没你同意一律拒绝。',
+    c3_title: '适合这些场景',
+    tools_b: [
+      ['browser_list_tabs', '所有窗口、所有配置的标签页'],
+      ['browser_read_page', '文本、HTML，或带选择器的元素清单'],
+      ['browser_console', '日志和异常，连接之前的也有'],
+      ['browser_network', '状态码、大小、失败原因、响应体'],
+      ['browser_screenshot', '可视区、整页或单个元素'],
+      ['browser_eval', '执行 JS，自动等 Promise'],
+      ['browser_open_tab / close_tab', 'agent 在自己的窗口里干活'],
+      ['browser_navigate', '跳转、后退、前进、刷新'],
+      ['browser_click', '可信点击，被遮挡就拒绝'],
+      ['browser_type', 'insertText 输入，中文不乱'],
+      ['browser_key', '回车、方向键、cmd+a / c / v / z'],
+      ['browser_upload_file', '本地路径直接挂到文件框，不弹窗'],
+    ],
+    tools_n: [
+      ['os_check_health', '权限状态，该给哪个进程授权'],
+      ['os_list_windows', 'App、窗口、打开着的对话框'],
+      ['os_ax_snapshot', '裁剪过的 Accessibility 树'],
+      ['os_ax_interact', '按下、设值、聚焦、点击'],
+      ['os_handle_file_dialog', '处理已弹出的系统文件框'],
+    ],
+    scen: [
+      ['排错', 'var(--rose)', '这页为什么坏了', '你正在看的那页，DOM、页面加载时的 console 报错、失败的请求，各一次调用拿到。', '连接之前的日志也能补回'],
+      ['上传', 'var(--green)', '传大视频', '只把文件路径交给 Chrome，字节不经过 agent，也不经过扩展。', '50 MB · 0.04 秒 · 不弹文件框'],
+      ['协作', 'var(--blue)', 'agent 在旁边干活', '它开自己的窗口，在里面点和输入，没你同意碰不了你的标签页。', 'ERR_USER_TAB_PROTECTED'],
+      ['输入', 'var(--amber)', '中文表单照样填', '中文、日文、emoji 都走 insertText，不模拟逐个按键，输入法不打架。', 'isTrusted=true · 单次点击 120 ms'],
+      ['节点', 'var(--blue)', '一台常驻的执行 Mac', '同一份二进制拷到老 Intel Mac，SSH 远程调用。', 'arm64 + x86_64 · macOS 14+'],
+      ['原生', 'var(--green)', '浏览器够不着的地方', '系统文件对话框、权限弹窗、其他 App，走 Accessibility。', 'AXUIElement · CGEvent'],
+    ],
+  },
+};
+const q = new URLSearchParams(location.search);
+const L = T[q.get('lang') === 'zh' ? 'zh' : 'en'];
+document.documentElement.lang = q.get('lang') === 'zh' ? 'zh-CN' : 'en';
+document.querySelectorAll('[data-i18n]').forEach(el => { el.innerHTML = L[el.dataset.i18n]; });
+const tool = ([n, d]) => `<div class="t"><code>${n}</code><div>${d}</div></div>`;
+document.getElementById('browserTools').innerHTML = L.tools_b.map(tool).join('');
+document.getElementById('nativeTools').innerHTML = L.tools_n.map(tool).join('');
+document.getElementById('scen').innerHTML = L.scen.map(([tag, c, h, p, proof]) =>
+  `<div class="s"><div class="tag" style="color:${c}">${tag}</div><h3>${h}</h3><p>${p}</p><div class="proof">${proof}</div></div>`).join('');
+document.getElementById('c' + (q.get('card') || '1')).classList.add('on');
+</script>
+</body>
+</html>
